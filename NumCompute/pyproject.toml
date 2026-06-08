@@ -3,11 +3,11 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "numcompute"
+name = "numcompute_stream"
 version = "0.1.0"
 description = "A lightweight numerical computing library built from scratch"
 authors = [
-  { name = "vedant hire", email = "a3197540@adelaide.edu.au" }
+  { name = "Prakriti Timalsena", email = "a1989163@adelaide.edu.au" }
 ]
 readme = "README.md"
 requires-python = ">=3.9"
@@ -17,4 +17,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["numcompute*"]
+include = ["numcompute_stream*"]

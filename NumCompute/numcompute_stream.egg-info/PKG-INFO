@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: numcompute_stream
+Version: 0.1.0
+Summary: A lightweight numerical computing library built from scratch
+Author-email: Prakriti Timalsena <a1989163@adelaide.edu.au>
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.21
