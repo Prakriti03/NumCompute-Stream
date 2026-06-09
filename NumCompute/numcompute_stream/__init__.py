@@ -5,7 +5,25 @@ from .stats import mean, median, std, variance, quantile, percentile, histogram
 
 from .preprocessing import StandardScaler, MinMaxScaler, Imputer, OneHotEncoder
 
-from .metrics import confusion_matrix, accuracy, precision, recall, f1, mse, r2, rmse, auc, roc_curve, mae
+from .metrics import (
+    accuracy,
+    precision,
+    recall,
+    f1,
+    confusion_matrix,
+    mse,
+    rmse,
+    mae,
+    r2,
+    roc_curve,
+    auc,
+    StreamingAccuracy,
+    StreamingPrecision,
+    StreamingRecall,
+    StreamingF1,
+    StreamingConfusionMatrix,
+    RollingAccuracy,
+)
 
 from .tree import DecisionTreeClassifier, TreeNode
 

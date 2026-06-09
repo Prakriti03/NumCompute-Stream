@@ -278,4 +278,284 @@ def auc(fpr, tpr):
     order = np.argsort(fpr, kind='stable')
     return float(np.trapezoid(tpr[order], fpr[order]))
 
-print("metrics.py loaded ✓")
+# Streaming Classification Metrics
+class StreamingConfusionMatrix:
+    def __init__(self, labels=None):
+        self._auto = labels is None
+        self.labels = None if labels is None else np.asarray(labels)
+        self.cm = None
+        if self.labels is not None:
+            self.cm = np.zeros((self.labels.size, self.labels.size), dtype=int)
+
+    def update(self, y_true, y_pred):
+        y_true = _as_1d(np.asarray(y_true), "y_true")
+        y_pred = _as_1d(np.asarray(y_pred), "y_pred")
+        _check_len(y_true, y_pred)
+        if y_true.size == 0:
+            raise ValueError("y_true and y_pred must not be empty.")
+
+        if self._auto:
+            batch_labels = np.union1d(y_true, y_pred)
+            if self.labels is None:
+                self.labels = batch_labels
+                self.cm = np.zeros((self.labels.size, self.labels.size), dtype=int)
+            else:
+                all_labels = np.union1d(self.labels, batch_labels)
+                if all_labels.size != self.labels.size:
+                    old_cm, old_labels = self.cm, self.labels
+                    self.labels = all_labels
+                    self.cm = np.zeros((all_labels.size, all_labels.size), dtype=int)
+                    idx = np.searchsorted(all_labels, old_labels)   # union1d is sorted
+                    self.cm[np.ix_(idx, idx)] = old_cm
+
+        batch_cm, _ = confusion_matrix(y_true, y_pred, labels=self.labels)
+        self.cm += batch_cm
+        return self
+
+    def result(self):
+        if self.cm is None:
+            return np.zeros((0, 0), dtype=int), np.array([])
+        return self.cm.copy(), self.labels.copy()
+
+    def reset(self):
+        self.cm = None
+        return self
+
+
+class StreamingAccuracy:
+    def __init__(self):
+        self.correct = 0
+        self.total = 0
+
+    def update(self, y_true, y_pred):
+        y_true = _as_1d(np.asarray(y_true), "y_true")
+        y_pred = _as_1d(np.asarray(y_pred), "y_pred")
+        _check_len(y_true, y_pred)
+
+        if y_true.size == 0:
+            raise ValueError("y_true and y_pred must not be empty.")
+
+        self.correct += int(np.sum(y_true == y_pred))
+        self.total += int(y_true.size)
+
+        return self
+
+    def result(self):
+        return 0.0 if self.total == 0 else float(self.correct / self.total)
+
+    def reset(self):
+        self.correct = 0
+        self.total = 0
+        return self
+
+
+class StreamingPrecision:
+    def __init__(self, average="binary", pos_label=1, zero_division=0.0, labels=None):
+        self.average = average
+        self.pos_label = pos_label
+        self.zero_division = zero_division
+        self.cm_metric = StreamingConfusionMatrix(labels=labels)
+
+    def update(self, y_true, y_pred):
+        self.cm_metric.update(y_true, y_pred)
+        return self
+
+    def result(self):
+        cm, labels = self.cm_metric.result()
+        if cm.size == 0:
+            return self.zero_division
+
+        tp = np.diag(cm).astype(float)
+        fp = cm.sum(axis=0) - tp
+
+        denom = tp + fp
+        per_class = np.where(denom == 0, self.zero_division, tp / denom)
+
+        if self.average == "none":
+            return per_class
+
+        if self.average == "macro":
+            return float(np.mean(per_class))
+
+        if self.average == "micro":
+            total_tp = tp.sum()
+            total_fp = fp.sum()
+            den = total_tp + total_fp
+            return float(total_tp / den) if den > 0 else self.zero_division
+
+        if self.average == "binary":
+            if self.pos_label not in labels:
+                return self.zero_division
+            idx = np.where(labels == self.pos_label)[0][0]
+            return float(per_class[idx])
+
+        raise ValueError("average must be 'binary', 'macro', 'micro', or 'none'")
+
+    def reset(self):
+        self.cm_metric.reset()
+        return self
+
+
+class StreamingRecall:
+
+    def __init__(self, average="binary", pos_label=1, zero_division=0.0, labels=None):
+        self.average = average
+        self.pos_label = pos_label
+        self.zero_division = zero_division
+        self.cm_metric = StreamingConfusionMatrix(labels=labels)
+
+    def update(self, y_true, y_pred):
+        self.cm_metric.update(y_true, y_pred)
+        return self
+
+    def result(self):
+        cm, labels = self.cm_metric.result()
+        if cm.size == 0:
+            return self.zero_division
+
+        tp = np.diag(cm).astype(float)
+        fn = cm.sum(axis=1) - tp
+
+        denom = tp + fn
+        per_class = np.where(denom == 0, self.zero_division, tp / denom)
+
+        if self.average == "none":
+            return per_class
+
+        if self.average == "macro":
+            return float(np.mean(per_class))
+
+        if self.average == "micro":
+            total_tp = tp.sum()
+            total_fn = fn.sum()
+            den = total_tp + total_fn
+            return float(total_tp / den) if den > 0 else self.zero_division
+
+        if self.average == "binary":
+            if self.pos_label not in labels:
+                return self.zero_division
+            idx = np.where(labels == self.pos_label)[0][0]
+            return float(per_class[idx])
+
+        raise ValueError("average must be 'binary', 'macro', 'micro', or 'none'")
+
+    def reset(self):
+        self.cm_metric.reset()
+        return self
+
+
+class StreamingF1:
+
+    def __init__(self, average="binary", pos_label=1, zero_division=0.0, labels=None):
+        self.average = average
+        self.pos_label = pos_label
+        self.zero_division = zero_division
+        self.cm_metric = StreamingConfusionMatrix(labels=labels)
+
+    def update(self, y_true, y_pred):
+        self.cm_metric.update(y_true, y_pred)
+        return self
+
+    def result(self):
+        cm, labels = self.cm_metric.result()
+        if cm.size == 0:
+            return self.zero_division
+
+        tp = np.diag(cm).astype(float)
+        fp = cm.sum(axis=0) - tp
+        fn = cm.sum(axis=1) - tp
+
+        denom = 2 * tp + fp + fn
+        per_class = np.where(denom == 0, self.zero_division, (2 * tp) / denom)
+
+        if self.average == "none":
+            return per_class
+
+        if self.average == "macro":
+            return float(np.mean(per_class))
+
+        if self.average == "micro":
+            total_tp = tp.sum()
+            total_fp = fp.sum()
+            total_fn = fn.sum()
+            den = 2 * total_tp + total_fp + total_fn
+            return float((2 * total_tp) / den) if den > 0 else self.zero_division
+
+        if self.average == "binary":
+            if self.pos_label not in labels:
+                return self.zero_division
+            idx = np.where(labels == self.pos_label)[0][0]
+            return float(per_class[idx])
+
+        raise ValueError("average must be 'binary', 'macro', 'micro', or 'none'")
+
+    def reset(self):
+        self.cm_metric.reset()
+        return self
+
+
+class RollingAccuracy:
+
+    def __init__(self, window_size=100):
+        if window_size < 1:
+            raise ValueError("window_size must be >= 1")
+
+        self.window_size = window_size
+        self.correct_buffer = np.array([], dtype=int)
+
+    def update(self, y_true, y_pred):
+        y_true = _as_1d(np.asarray(y_true), "y_true")
+        y_pred = _as_1d(np.asarray(y_pred), "y_pred")
+        _check_len(y_true, y_pred)
+
+        if y_true.size == 0:
+            raise ValueError("y_true and y_pred must not be empty.")
+
+        correct = (y_true == y_pred).astype(int)
+
+        self.correct_buffer = np.concatenate([self.correct_buffer, correct])
+
+        if self.correct_buffer.size > self.window_size:
+            self.correct_buffer = self.correct_buffer[-self.window_size:]
+
+        return self
+
+    def result(self):
+        if self.correct_buffer.size == 0:
+            return 0.0
+        return float(np.mean(self.correct_buffer))
+
+    def reset(self):
+        self.correct_buffer = np.array([], dtype=int)
+        return self
+    
+class StreamingAUC:
+    """Accumulating ROC-AUC over streaming chunks (binary classification).
+    Buffers all (score, label) pairs and recomputes on result()."""
+
+    def __init__(self, pos_label=1):
+        self.pos_label = pos_label
+        self._scores = np.array([], dtype=float)
+        self._labels = np.array([])
+
+    def update(self, y_true, y_score):
+        y_true = _as_1d(np.asarray(y_true), "y_true")
+        y_score = _as_1d(np.asarray(y_score, float), "y_score")
+        _check_len(y_true, y_score)
+        if y_true.size == 0:
+            raise ValueError("y_true and y_score must not be empty.")
+        self._labels = np.concatenate([self._labels, y_true])
+        self._scores = np.concatenate([self._scores, y_score])
+        return self
+
+    def result(self):
+        pos = (self._labels == self.pos_label)
+        if pos.sum() == 0 or (~pos).sum() == 0:
+            return 0.0  # undefined until both classes seen
+        fpr, tpr, _ = roc_curve(self._labels, self._scores, self.pos_label)
+        return auc(fpr, tpr)
+
+    def reset(self):
+        self._scores = np.array([], dtype=float)
+        self._labels = np.array([])
+        return self

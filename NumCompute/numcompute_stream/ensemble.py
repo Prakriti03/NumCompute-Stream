@@ -317,3 +317,5 @@ class RandomForestClassifier:
             f"criterion='{self.criterion}', "
             f"bootstrap={self.bootstrap})"
         )
+        
+EnsembleClassifier = RandomForestClassifier
