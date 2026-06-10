@@ -451,7 +451,7 @@ class WelfordStatistics:
     self._mean = np.zeros_like(x, dtype=float)
     self._M2 = np.zeros_like(x, dtype=float)
 
-  def update(self, x: np.ndarray):
+  def update_one(self, x: np.ndarray):
     """
         Incorporate a single observation.
  
@@ -492,9 +492,68 @@ class WelfordStatistics:
     """
     X = np.asarray(X, dtype=float)
     for row in X:
-      self.update(row)
+      self.update_one(row)
     return self
 
+  def update_stats(self, X_chunk: np.ndarray) -> "WelfordStatistics":
+      X_chunk = np.asarray(X_chunk, dtype=float)
+
+      if X_chunk.ndim == 1:
+          X_chunk = X_chunk[:, None]
+
+      if X_chunk.shape[0] == 0:
+          return self
+
+      valid_counts = np.sum(~np.isnan(X_chunk), axis=0).astype(float)
+      valid_cols = valid_counts > 0
+
+      if not np.any(valid_cols):
+          return self
+
+      chunk_mean = np.zeros(X_chunk.shape[1], dtype=float)
+      chunk_var = np.zeros(X_chunk.shape[1], dtype=float)
+
+      chunk_mean[valid_cols] = np.nanmean(X_chunk[:, valid_cols], axis=0)
+      chunk_var[valid_cols] = np.nanvar(X_chunk[:, valid_cols], axis=0)
+
+      chunk_M2 = chunk_var * valid_counts
+
+      if self._mean is None:
+          self._mean = np.zeros(X_chunk.shape[1], dtype=float)
+          self._M2 = np.zeros(X_chunk.shape[1], dtype=float)
+          self._n = np.zeros(X_chunk.shape[1], dtype=float)
+
+      new_n = self._n + valid_counts
+      update_cols = valid_counts > 0
+
+      first_cols = (self._n == 0) & update_cols
+      existing_cols = (self._n > 0) & update_cols
+
+      self._mean[first_cols] = chunk_mean[first_cols]
+      self._M2[first_cols] = chunk_M2[first_cols]
+
+      delta = chunk_mean - self._mean
+
+      self._mean[existing_cols] = (
+          self._n[existing_cols] * self._mean[existing_cols]
+          + valid_counts[existing_cols] * chunk_mean[existing_cols]
+      ) / new_n[existing_cols]
+
+      self._M2[existing_cols] = (
+          self._M2[existing_cols]
+          + chunk_M2[existing_cols]
+          + delta[existing_cols] ** 2
+          * self._n[existing_cols]
+          * valid_counts[existing_cols]
+          / new_n[existing_cols]
+      )
+
+      self._n = new_n
+      return self
+  
+  def update(self, X_chunk):
+    return self.update_stats(X_chunk)
+      
   def mean(self)->np.ndarray:
     """
         Return the current running mean.
@@ -503,7 +562,7 @@ class WelfordStatistics:
         -------
         np.ndarray or None if no data has been seen yet.
     """
-    if self._n==0:
+    if self._mean is None:
       return None
     return self._mean.copy()
 
@@ -525,11 +584,13 @@ class WelfordStatistics:
         ValueError
             If ddof >= n.
     """
-    if self._n==0:
+    if self._mean is None:
       return None
-    if self._n<=ddof:
-      raise ValueError(f"Require atleast {ddof+1}observations for ddof={ddof}")
-    return self._M2/(self._n-ddof)
+
+    if np.any(self._n <= ddof):
+        raise ValueError(f"Require at least {ddof + 1} observations for ddof={ddof}")
+
+    return self._M2 / (self._n - ddof)
 
   def std(self,ddof:int=0)->np.ndarray:
     """
@@ -547,7 +608,7 @@ class WelfordStatistics:
     return None if v is None else np.sqrt(v)
 
   @property
-  def n(self)->int: #Number of observations so far
+  def n(self): #Number of observations so far
     return self._n
 
   def reset(self): #Reset all accumulaor to initial state
@@ -659,3 +720,147 @@ def describe(x:np.ndarray, ddof:int=1)->dict:
       "skew": float(skew),
       "kurtosis": float(kurt)
   }
+
+class StreamingHistogram:
+    def __init__(self, bins: int = 10, window_size: int = None):
+        if bins < 1:
+            raise ValueError("bins must be >= 1")
+        if window_size is not None and window_size < 1:
+            raise ValueError("window_size must be >= 1")
+        self.bins        = bins
+        self.window_size = window_size
+        self._buffer     = np.array([], dtype=float)
+
+    def update_stats(self, X_chunk: np.ndarray) -> "StreamingHistogram":
+        vals = np.asarray(X_chunk, dtype=float).ravel()
+        vals = vals[~np.isnan(vals)]
+        
+        if vals.size == 0:
+            return self
+        self._buffer = np.concatenate([self._buffer, vals])
+        if self.window_size is not None and self._buffer.size > self.window_size:
+            self._buffer = self._buffer[-self.window_size:]
+        return self
+      
+    def update(self, X_chunk):
+      return self.update_stats(X_chunk)
+
+    def result(self) -> tuple:
+        if self._buffer.size == 0:
+            raise RuntimeError("No data — call update_stats first")
+        return histogram(self._buffer, bins=self.bins)
+
+    def reset(self) -> "StreamingHistogram":
+        self._buffer = np.array([], dtype=float)
+        return self
+      
+class StreamingQuantile:
+    def __init__(self, q, window_size: int = None):
+        q_arr = np.asarray(q, dtype=float)
+        if np.any(q_arr < 0) or np.any(q_arr > 1):
+            raise ValueError("All quantile values must be in [0, 1]")
+        self.q           = q_arr
+        self.window_size = window_size
+        self._buffer     = np.array([], dtype=float)
+
+    def update_stats(self, X_chunk: np.ndarray) -> "StreamingQuantile":
+        vals = np.asarray(X_chunk, dtype=float).ravel()
+        vals = vals[~np.isnan(vals)]
+        if vals.size == 0:
+            return self
+        self._buffer = np.concatenate([self._buffer, vals])
+        if self.window_size is not None and self._buffer.size > self.window_size:
+            self._buffer = self._buffer[-self.window_size:]
+        return self
+      
+    def update(self, X_chunk):
+        return self.update_stats(X_chunk)
+      
+    def result(self) -> np.ndarray:
+        if self._buffer.size == 0:
+            raise RuntimeError("No data — call update_stats first")
+        return np.quantile(self._buffer, self.q)
+
+    def reset(self) -> "StreamingQuantile":
+        self._buffer = np.array([], dtype=float)
+        return self
+      
+class StreamingStats:
+    def __init__(self, n_features: int = 1, bins: int = 10,
+                 quantiles=None, window_size: int = None):
+        if n_features < 1:
+            raise ValueError("n_features must be >= 1")
+        self.n_features  = n_features
+        self._welford    = WelfordStatistics()
+        self._histograms = [StreamingHistogram(bins, window_size) for _ in range(n_features)]
+        self.quantile_values = quantiles if quantiles is not None else [0.25, 0.5, 0.75]
+        self._quantiles = [
+            StreamingQuantile(self.quantile_values, window_size)
+            for _ in range(n_features)
+        ]
+        self.n_chunks_seen = 0
+
+    def update_stats(self, X_chunk: np.ndarray) -> "StreamingStats":
+        X_chunk = np.asarray(X_chunk, dtype=float)
+        if X_chunk.ndim == 1:
+            X_chunk = X_chunk[:, None]
+        if X_chunk.shape[0] == 0:
+            return self
+        if X_chunk.shape[1] != self.n_features:
+            raise ValueError(
+                f"Expected {self.n_features} features, got {X_chunk.shape[1]}"
+            )
+
+        self._welford.update_stats(X_chunk)
+        for j in range(self.n_features):
+            self._histograms[j].update_stats(X_chunk[:, j])
+            
+        # Loop over features is acceptable here because each quantile object
+        # manages one feature stream, while per-feature computations use NumPy.
+        for j in range(self.n_features):
+            self._quantiles[j].update_stats(X_chunk[:, j])
+            
+        self.n_chunks_seen += 1
+        return self
+
+    def update(self, X_chunk):
+        return self.update_stats(X_chunk)
+      
+    def mean(self) -> np.ndarray:
+        return self._welford.mean()
+
+    def variance(self, ddof: int = 0) -> np.ndarray:
+        return self._welford.variance(ddof=ddof)
+
+    def std(self, ddof: int = 0) -> np.ndarray:
+        return self._welford.std(ddof=ddof)
+
+    def quantiles(self) -> np.ndarray:
+        return np.array([q.result() for q in self._quantiles])
+      
+    def histogram(self, feature: int = 0) -> tuple:
+        if feature >= self.n_features:
+            raise ValueError(f"feature index {feature} out of range")
+        return self._histograms[feature].result()
+
+    def summary(self) -> dict:
+        return {
+            "n_chunks":  self.n_chunks_seen,
+            "n_samples": self._welford.n,
+            "mean":      self.mean(),
+            "std":       self.std(),
+            "variance":  self.variance(),
+            "quantiles": None if self.n_chunks_seen == 0 else self.quantiles()
+        }
+
+    def reset(self) -> "StreamingStats":
+      self._welford.reset()
+
+      for h in self._histograms:
+          h.reset()
+
+      for q in self._quantiles:
+          q.reset()
+
+      self.n_chunks_seen = 0
+      return self
