@@ -639,10 +639,13 @@ class WelfordStatistics:
         ValueError
             If the two accumulators track different-shaped observations.
     """
-    if other._n==0:
+    other_empty = other._mean is None or np.all(other._n == 0)
+    self_empty  = self._mean is None  or np.all(self._n == 0)
+    
+    if other_empty:
       return self
-    if self._n==0:
-      self._n=other._n
+    if self_empty:
+      self._n= other._n.copy() if isinstance(other._n, np.ndarray) else other._n
       self._mean=other.mean().copy()
       self._M2=other._M2.copy()
       return self
@@ -651,11 +654,9 @@ class WelfordStatistics:
     num_a,num_b=self._n,other._n
     num_combined=num_a+num_b
     delta=other._mean-self._mean
-    new_mean=self._mean+delta*(num_b/num_combined)
-    new_M2=self._M2+other._M2+(delta**2)*(num_a*num_b/num_combined)
-    self._n=num_combined
-    self._mean=new_mean
-    self._M2=new_M2
+    self._mean   = self._mean + delta * (num_b / num_combined)
+    self._M2     = self._M2 + other._M2 + (delta ** 2) * (num_a * num_b / num_combined)
+    self._n      = num_combined
     return self
 
   def __repr__(self)->str:
@@ -836,6 +837,8 @@ class StreamingStats:
         return self._welford.std(ddof=ddof)
 
     def quantiles(self) -> np.ndarray:
+        if self.n_chunks_seen == 0:
+          return None
         return np.array([q.result() for q in self._quantiles])
       
     def histogram(self, feature: int = 0) -> tuple:
