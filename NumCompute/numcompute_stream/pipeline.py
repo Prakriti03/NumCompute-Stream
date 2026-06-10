@@ -33,6 +33,10 @@ class Transformer:
         """
         return self
 
+    def partial_fit(self, X: NDArray) -> "Transformer":
+        """Incrementally learn parameters from X. Default falls back to fit()."""
+        return self.fit(X)
+    
     def transform(self, X: NDArray) -> NDArray:
         """Apply transformation to X. Must be overridden in subclass.
         Parameters
@@ -75,6 +79,12 @@ class Estimator:
         self
         """
         return self
+    
+    def partial_fit(self, X: NDArray, y: NDArray | None = None, classes=None) -> "Estimator":
+        """Incrementally fit estimator. Default falls back to fit()."""
+        if y is None:
+            return self.fit(X)
+        return self.fit(X, y)
 
     def predict(self, X: NDArray) -> NDArray:
         """Predict on new data. Must be overridden in subclass.
@@ -115,6 +125,8 @@ class Pipeline:
             raise ValueError("steps must not be empty.")
         self.steps = steps
         self._check_steps()
+        self.named_steps = dict(steps)
+        self._is_fitted = False
 
     def _check_steps(self):
         """Validate step format, unique names, and required interfaces."""
@@ -159,6 +171,61 @@ class Pipeline:
             final.fit(Xt, y)
         else:
             final.fit(Xt)
+            
+        self._is_fitted = True
+        return self
+    
+    def partial_fit(
+        self,
+        X: NDArray,
+        y: NDArray | None = None,
+        classes=None,
+    ) -> "Pipeline":
+        """
+        Incrementally fit all pipeline steps on a streaming chunk.
+
+        Intermediate transformers use partial_fit() if available, then transform().
+        Final estimator uses partial_fit() if available, otherwise fit().
+        """
+        Xt = np.asarray(X)
+
+        if Xt.ndim != 2:
+            raise ValueError(f"X must be 2D, got shape {Xt.shape}")
+
+        for name, step in self.steps[:-1]:
+            if hasattr(step, "partial_fit"):
+                step.partial_fit(Xt)
+            elif hasattr(step, "fit"):
+                step.fit(Xt)
+            else:
+                raise TypeError(f"Step '{name}' must have partial_fit() or fit().")
+
+            if not hasattr(step, "transform"):
+                raise TypeError(f"Non-final step '{name}' must have transform().")
+
+            Xt = step.transform(Xt)
+
+        final_name, final = self.steps[-1]
+
+        if hasattr(final, "partial_fit"):
+            if y is None:
+                final.partial_fit(Xt)
+            else:
+                try:
+                    final.partial_fit(Xt, y, classes=classes)
+                except TypeError:
+                    final.partial_fit(Xt, y)
+        elif hasattr(final, "fit"):
+            if y is None:
+                final.fit(Xt)
+            else:
+                final.fit(Xt, y)
+        else:
+            raise TypeError(
+                f"Final step '{final_name}' must have partial_fit() or fit()."
+            )
+
+        self._is_fitted = True
         return self
 
     def fit_transform(self, X: NDArray, y: NDArray | None = None) -> NDArray:
@@ -191,6 +258,8 @@ class Pipeline:
         ------
         TypeError — if any step does not support transform()
         """
+        if not self._is_fitted:
+            raise RuntimeError("Pipeline must be fitted before transform().")
         Xt = np.asarray(X)
         for name, step in self.steps:
             if not hasattr(step, "transform"):
@@ -210,6 +279,10 @@ class Pipeline:
         ------
         TypeError — if the final step does not support predict()
         """
+        
+        if not self._is_fitted:
+            raise RuntimeError("Pipeline must be fitted before predict().")
+        
         Xt = np.asarray(X)
         for _, step in self.steps[:-1]:
             Xt = step.transform(Xt)
@@ -217,7 +290,49 @@ class Pipeline:
         if not hasattr(final, "predict"):
             raise TypeError(f"Final step '{final_name}' does not support predict().")
         return final.predict(Xt)
+    
+    def predict_proba(self, X: NDArray) -> NDArray:
+        """Transform through intermediate steps then predict probabilities."""
+        if not self._is_fitted:
+            raise RuntimeError("Pipeline must be fitted before predict_proba().")
 
+        Xt = np.asarray(X)
+
+        for _, step in self.steps[:-1]:
+            Xt = step.transform(Xt)
+
+        final_name, final = self.steps[-1]
+
+        if not hasattr(final, "predict_proba"):
+            raise TypeError(
+                f"Final step '{final_name}' does not support predict_proba()."
+            )
+
+        return final.predict_proba(Xt)
+
+    def score(self, X: NDArray, y: NDArray) -> float:
+        """Return accuracy score for classification."""
+        y = np.asarray(y)
+
+        if y.ndim != 1:
+            raise ValueError(f"y must be 1D, got shape {y.shape}")
+
+        y_pred = self.predict(X)
+
+        if y_pred.shape[0] != y.shape[0]:
+            raise ValueError("X and y have inconsistent lengths.")
+
+        return float(np.mean(y_pred == y))
+    
+    def get_step(self, name: str):
+        """Return a pipeline step by name."""
+        if name not in self.named_steps:
+            raise KeyError(f"No step named {name!r}")
+        return self.named_steps[name]
+
+    def __getitem__(self, name: str):
+        return self.get_step(name)
+    
     def __repr__(self) -> str:
         names = [name for name, _ in self.steps]
         return f"Pipeline(steps={names})"
