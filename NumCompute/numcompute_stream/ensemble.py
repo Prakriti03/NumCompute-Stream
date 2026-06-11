@@ -1,3 +1,15 @@
+"""
+ensemble.py — tree-based ensemble models for NumCompute-Stream.
+
+This module implements RandomForestClassifier using multiple
+DecisionTreeClassifier instances. It supports both batch training through
+fit() and streaming-style updates through partial_fit().
+
+The streaming strategy is accumulate-and-rebuild: each new chunk is appended
+to the observed history, and the forest is rebuilt on all seen data. This keeps
+the implementation simple and batch-equivalent, while making the computational
+cost explicit in the benchmark.
+"""
 
 import numpy as np
 from typing import List, Optional, Union
@@ -5,7 +17,35 @@ from typing import List, Optional, Union
 from numcompute_stream.tree import DecisionTreeClassifier
 
 
-class RandomForestClassifier:
+class RandomForestClassifier: 
+    """
+    Random forest classifier built from multiple decision trees.
+
+    Parameters
+    ----------
+    n_estimators : int, default=10
+        Number of decision trees in the forest.
+    max_depth : int or None, default=10
+        Maximum depth of each tree. None allows unrestricted depth.
+    min_samples_leaf : int, default=1
+        Minimum samples required in a leaf node.
+    min_samples_split : int, default=2
+        Minimum samples required to attempt a split.
+    max_features : {"sqrt", "log2"} or int or None, default="sqrt"
+        Number of features considered by each split.
+    criterion : {"gini", "entropy"}, default="gini"
+        Impurity criterion used by each tree.
+    bootstrap : bool, default=True
+        Whether to train each tree on a bootstrap sample.
+    random_state : int or None, default=None
+        Seed for reproducible bootstrap samples.
+
+    Notes
+    -----
+    Voting is vectorised by stacking tree predictions, mapping class labels
+    to class indices, and accumulating per-sample class counts with np.add.at.
+    """
+    
     def __init__(
         self,
         n_estimators: int = 10,
@@ -98,6 +138,8 @@ class RandomForestClassifier:
         y: np.ndarray,
         seed: Optional[int],
     ):
+        """Return a bootstrap sample of X and y using the provided seed."""
+        
         if not self.bootstrap:
             return X, y
 
@@ -107,6 +149,7 @@ class RandomForestClassifier:
         return X[indices], y[indices]
 
     def _build_trees(self, X: np.ndarray, y: np.ndarray) -> None:
+        """Build all trees in the forest using bootstrap samples."""
         self.trees_ = []
 
         for i in range(self.n_estimators):
@@ -151,6 +194,13 @@ class RandomForestClassifier:
         y: np.ndarray,
         classes: Optional[np.ndarray] = None,
     ) -> "RandomForestClassifier":
+        """
+        Incrementally update the forest with one new chunk.
+
+        The implementation appends the chunk to previously seen data and
+        rebuilds the forest. This gives exact behaviour on the accumulated
+        data and keeps class handling consistent across chunks.
+        """
         X, y = self._validate_input(X, y)
 
         if not self._is_fitted:
@@ -257,6 +307,7 @@ class RandomForestClassifier:
         y_pred = self.predict(X)
         return float(np.mean(y_pred == y))
 
+    # Importance is measured as normalised split-feature usage.
     def get_feature_importances(self) -> np.ndarray:
         if not self._is_fitted or len(self.trees_) == 0:
             raise RuntimeError("Forest must be fitted first.")

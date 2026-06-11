@@ -1,3 +1,15 @@
+"""
+Unit tests for ensemble.py.
+
+Coverage includes:
+- RandomForestClassifier fit/predict workflow
+- streaming partial_fit accumulation
+- probability output shape and normalisation
+- bootstrap and reproducibility behaviour
+- feature importance output
+- invalid parameters and input validation
+"""
+
 import numpy as np
 import pytest
 

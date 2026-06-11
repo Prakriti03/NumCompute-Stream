@@ -1,3 +1,15 @@
+"""
+Unit tests for visualise.py.
+
+Coverage includes:
+- required plotting functions returning matplotlib Figure objects
+- confusion matrix plotting
+- metric extraction from StreamTrainer logs
+- invalid inputs and error handling
+
+The Agg backend is used so tests run in headless environments.
+"""
+
 import numpy as np
 import pytest
 import matplotlib

@@ -1,8 +1,12 @@
 """
-stream.py — streaming training utilities.
+stream.py — chunk-wise training and evaluation utilities.
 
-Provides StreamTrainer for chunk-wise training, scoring, metric tracking,
-memory logging, and cumulative accuracy monitoring.
+Provides StreamTrainer, a lightweight controller for streaming workflows.
+It connects a Pipeline or model with streaming metrics, per-chunk logging,
+training/evaluation accuracy tracking, timing, and memory footprint reporting.
+
+The class is intentionally model-agnostic: any object with partial_fit() and
+predict() can be used.
 """
 
 from __future__ import annotations
@@ -40,11 +44,30 @@ class StreamTrainer:
         self.total_correct_ = 0
         self.total_seen_ = 0
         self._is_fitted = False
-                # Add to __init__:
         self.total_eval_correct_ = 0
         self.total_eval_seen_    = 0
 
     def _validate_chunk(self, X, y=None):
+        """
+        Validate one streaming chunk.
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            Feature chunk.
+        y : array-like, shape (n_samples,), optional
+            Target labels for supervised training/evaluation.
+
+        Returns
+        -------
+        X, y : np.ndarray
+            Validated arrays.
+
+        Raises
+        ------
+        ValueError
+            If X is not 2D, empty, or inconsistent with y.
+        """
         X = np.asarray(X)
 
         if X.ndim != 2:
@@ -207,9 +230,10 @@ class StreamTrainer:
 
     def fit_stream(self, X, y, chunk_size=100, classes=None):
         """
-        Fit over a full dataset by splitting it into chunks.
+        Simulate a stream by splitting a static dataset into chunks.
 
-        This is useful for demos where a static dataset is simulated as a stream.
+        This helper is mainly used in demos and benchmarks. Real streaming
+        applications can call fit_chunk() directly whenever a new chunk arrives.
         """
         X, y = self._validate_chunk(X, y)
 

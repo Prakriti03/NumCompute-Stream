@@ -1,3 +1,15 @@
+"""
+Unit tests for streaming statistics.
+
+Coverage includes:
+- Welford mean/variance against NumPy
+- NaN-aware per-feature updates
+- StreamingHistogram accumulation and sliding window
+- StreamingQuantile updates
+- StreamingStats summary/reset behaviour
+- invalid streaming parameters
+"""
+
 import numpy as np
 import pytest
 

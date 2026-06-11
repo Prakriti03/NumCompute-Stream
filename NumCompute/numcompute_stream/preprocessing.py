@@ -396,6 +396,9 @@ class OneHotEncoder(Transformer):
         self.offsets_        = np.cumsum([0] + list(self.category_sizes_[:-1]))
         return self
 
+    # Looping over features is acceptable here because each feature has a
+    # different category set and output offset. Encoding within each column
+    # is vectorised using broadcasting over all rows.
     def transform(self, X: np.ndarray) -> np.ndarray:
         
         if not hasattr(self, "categories_"):          # ← move this FIRST

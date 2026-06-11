@@ -45,7 +45,7 @@ python -c "import numcompute_stream; print('OK')"
 pytest tests/ -v
 ```
 
-Expected output: **149 passed**
+Expected output: **151 passed**
 
 To run a specific test file:
 
@@ -57,7 +57,7 @@ pytest tests/test_visualise.py -v     # 13 tests — visualise.py
 pytest tests/test_preprocessing_streaming.py -v  # 11 tests — partial_fit scalers
 pytest tests/test_stats_streaming.py -v          # 10 tests — StreamingStats / WelfordStatistics
 pytest tests/test_pipeline_streaming.py -v       #  8 tests — Pipeline.partial_fit
-pytest tests/test_metrics_streaming.py -v        #  5 tests — StreamingAUC / RollingAccuracy
+pytest tests/test_metrics_streaming.py -v        #  7 tests — StreamingAUC / RollingAccuracy
 ```
 
 To run quietly (summary only):
@@ -135,7 +135,7 @@ NumCompute/
 │   ├── io.py                   # CSVReader with chunked streaming
 │   └── utils.py                # euclidean_distance, cosine_similarity, softmax, relu
 │
-├── tests/                      # Unit tests (149 total, all passing)
+├── tests/                      # Unit tests (151 total, all passing)
 │   ├── test_tree.py            # 52 tests
 │   ├── test_ensemble.py        # 12 tests
 │   ├── test_stream.py          # 12 tests
@@ -143,7 +143,7 @@ NumCompute/
 │   ├── test_preprocessing_streaming.py  # 11 tests
 │   ├── test_stats_streaming.py          # 10 tests
 │   ├── test_pipeline_streaming.py       #  8 tests
-│   ├── test_metrics_streaming.py        #  5 tests
+│   ├── test_metrics_streaming.py        #  7 tests
 │   └── legacy/                 # Tests carried over from Assignment 2.1
 │       ├── test_io.py
 │       ├── test_metrics.py

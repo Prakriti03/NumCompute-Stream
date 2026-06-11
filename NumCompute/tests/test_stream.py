@@ -1,3 +1,16 @@
+"""
+Unit tests for StreamTrainer.
+
+Coverage includes:
+- fit_chunk training and logging
+- fit_stream chunk splitting
+- score_chunk evaluation without retraining
+- metric updates across chunks
+- metric history extraction
+- memory tracking
+- reset behaviour
+- invalid pipeline and chunk validation
+"""
 import numpy as np
 import pytest
 

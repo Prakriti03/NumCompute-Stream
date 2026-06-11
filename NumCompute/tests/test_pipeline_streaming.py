@@ -1,3 +1,14 @@
+"""
+Unit tests for pipeline.py streaming behaviour.
+
+Coverage includes:
+- partial_fit through preprocessing + model steps
+- predict, predict_proba, and score after streaming fit
+- named step access
+- invalid step configuration
+- prediction before fitting
+- input shape validation
+"""
 import numpy as np
 import pytest
 

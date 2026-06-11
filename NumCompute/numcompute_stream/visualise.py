@@ -1,8 +1,15 @@
 """
-visualise.py — lightweight plotting utilities for NumCompute-Stream.
+visualise.py — matplotlib plotting helpers for NumCompute-Stream.
 
-Uses matplotlib only. Functions are designed for scripts, notebooks,
-benchmarks, and StreamTrainer logs.
+The functions in this module are intentionally lightweight and reusable across:
+
+- demo notebooks
+- benchmark scripts
+- StreamTrainer logs
+- report figure generation
+
+Each plotting function returns a matplotlib Figure object and supports both
+inline display through show=True and file export through save_path.
 """
 
 from __future__ import annotations
@@ -19,6 +26,9 @@ def _as_1d_array(values, name="values"):
 
 
 def _finalize_plot(title=None, xlabel=None, ylabel=None, save_path=None, show=True):
+    """
+    Apply common labels/layout, optionally save, optionally display, and return fig.
+    """
     if title is not None:
         plt.title(title)
     if xlabel is not None:
@@ -139,7 +149,10 @@ def plot_predictions_vs_ground_truth(
     show=True,
 ):
     """
-    Visualise predictions against true labels for the latest chunk.
+    Plot predicted labels against true labels for one chunk.
+
+    This is useful in the demo to inspect the latest streamed batch and show
+    where predictions differ from ground truth.
     """
     y_true = _as_1d_array(y_true, "y_true")
     y_pred = _as_1d_array(y_pred, "y_pred")
@@ -213,7 +226,20 @@ def plot_confusion_matrix(
 
 def extract_metric_from_logs(logs, key="cumulative_accuracy"):
     """
-    Extract a scalar metric history from StreamTrainer logs.
+    Extract one scalar field from StreamTrainer logs.
+
+    Parameters
+    ----------
+    logs : list[dict]
+        Log entries returned by StreamTrainer.fit_chunk(), score_chunk(),
+        or fit_stream().
+    key : str, default="cumulative_accuracy"
+        Name of the scalar field to extract.
+
+    Returns
+    -------
+    np.ndarray
+        Metric history across chunks.
     """
     if len(logs) == 0:
         raise ValueError("logs must not be empty.")

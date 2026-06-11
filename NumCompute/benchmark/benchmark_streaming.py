@@ -1,14 +1,37 @@
 """
-Benchmark script for NumCompute-Stream.
+Benchmark utilities for NumCompute-Stream.
 
-Covers:
-1. Loop vs vectorised NumPy performance.
-2. Streaming DecisionTreeClassifier vs RandomForestClassifier.
-3. Saves benchmark results and plots for report evidence.
+This script provides reproducible benchmarking evidence for Assignment 2.2.
+It evaluates two aspects of the framework:
+
+1. Python loop vs NumPy vectorised implementations
+   - accuracy calculation
+   - column-wise NaN-aware mean
+
+2. Streaming model performance
+   - DecisionTreeClassifier vs RandomForestClassifier
+   - chunk-wise partial_fit training
+   - holdout accuracy over time
+   - training time growth as more samples are accumulated
+
+Outputs
+-------
+benchmark/results/loop_vs_vectorized_results.csv
+benchmark/results/streaming_model_results.csv
+benchmark/results/loop_vs_vectorized.png
+benchmark/results/streaming_accuracy.png
+benchmark/results/streaming_train_time.png
+benchmark/results/training_time_growth.png
+
+Notes
+-----
+The benchmark dataset is synthetic by design. This keeps the experiment
+reproducible and allows controlled noise, nonlinearity, interactions, and
+missing values. The goal is to evaluate streaming behaviour and computational
+trade-offs, not maximise predictive performance on a real-world dataset.
 """
 
 import csv
-import os
 import sys
 import time
 from pathlib import Path
@@ -32,6 +55,30 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def make_dataset(n_samples=2000, n_features=6, random_state=42):
+    """
+    Generate a reproducible binary classification dataset.
+
+    The dataset includes linear terms, a nonlinear squared term, a feature
+    interaction term, Gaussian noise, and randomly injected missing values.
+    This makes the benchmark realistic enough to test preprocessing,
+    streaming updates, and tree-based decision boundaries.
+
+    Parameters
+    ----------
+    n_samples : int, default=2000
+        Number of rows to generate.
+    n_features : int, default=6
+        Number of numeric input features.
+    random_state : int, default=42
+        Seed for reproducible benchmark results.
+
+    Returns
+    -------
+    X : np.ndarray, shape (n_samples, n_features)
+        Feature matrix containing approximately 3% NaN values.
+    y : np.ndarray, shape (n_samples,)
+        Binary labels generated from the noisy decision function.
+    """
     rng = np.random.default_rng(random_state)
 
     X = rng.normal(size=(n_samples, n_features))
@@ -54,6 +101,12 @@ def make_dataset(n_samples=2000, n_features=6, random_state=42):
 
 
 def time_function(fn, repeats=5):
+    """
+    Time a callable repeatedly and return the median runtime.
+
+    Median time is used instead of mean time because it is less sensitive to
+    occasional operating-system scheduling noise during benchmarking.
+    """
     times = []
 
     for _ in range(repeats):
@@ -64,7 +117,8 @@ def time_function(fn, repeats=5):
 
     return float(np.median(times)), result
 
-
+# Baseline implementation intentionally uses a Python loop.
+# This is included only for benchmarking comparison against NumPy.
 def loop_accuracy(y_true, y_pred):
     correct = 0
 
@@ -74,11 +128,11 @@ def loop_accuracy(y_true, y_pred):
 
     return correct / len(y_true)
 
-
+# Vectorised implementation performs comparison and reduction in NumPy.
 def vectorized_accuracy(y_true, y_pred):
     return float(np.mean(y_true == y_pred))
 
-
+# Baseline nested-loop implementation for NaN-aware column means.
 def loop_column_mean(X):
     means = []
 
@@ -96,7 +150,7 @@ def loop_column_mean(X):
 
     return np.asarray(means)
 
-
+# Vectorised NaN-aware mean used as the efficient NumPy comparison.
 def vectorized_column_mean(X):
     return np.nanmean(X, axis=0)
 
@@ -170,7 +224,33 @@ def benchmark_loop_vs_vectorized(X, y):
 
 
 def benchmark_streaming_models(X, y, chunk_size=100):
-    # Hold out last 20% for honest evaluation
+    """
+    Benchmark streaming tree and forest models on a fixed holdout set.
+
+    The first 80% of rows are streamed in chunks using fit_chunk().
+    The final 20% are kept as a holdout set and evaluated after every chunk.
+    This gives a clearer picture of how predictive performance evolves as
+    more training data arrives.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Full feature matrix.
+    y : np.ndarray
+        Full target vector.
+    chunk_size : int, default=100
+        Number of training samples per streaming chunk.
+
+    Returns
+    -------
+    rows : list[dict]
+        Flattened benchmark rows suitable for CSV export.
+    tree_logs : list[dict]
+        Per-chunk logs from the decision-tree StreamTrainer.
+    forest_logs : list[dict]
+        Per-chunk logs from the random-forest StreamTrainer.
+    """
+
     n_train = int(len(X) * 0.8)
     X_train, X_test = X[:n_train], X[n_train:]
     y_train, y_test = y[:n_train], y[n_train:]
@@ -366,7 +446,7 @@ def main():
     print()
     
     # ── Streaming models ────────────────────────────────────────────────
-    print("Final cumulative accuracy:")
+    print("Final holdout accuracy:")
     print(f"Decision tree:  {tree_logs[-1]['cumulative_accuracy']:.4f}")
     print(f"Random forest:  {forest_logs[-1]['cumulative_accuracy']:.4f}")
     print()

@@ -1,3 +1,14 @@
+"""
+Unit tests for streaming preprocessing.
+
+Coverage includes:
+- StandardScaler partial_fit matching full fit
+- MinMaxScaler running min/max updates
+- Imputer streaming mean and constant strategies
+- OneHotEncoder incremental category expansion
+- NaN-heavy chunks and empty input validation
+"""
+
 import numpy as np
 import pytest
 

@@ -1,15 +1,21 @@
 """
-pipeline.py —  pipeline for chaining transformers and estimators.
+pipeline.py — composable batch and streaming pipeline abstraction.
 
-Provides a Transformer and Estimator base class, and a Pipeline class
-that chains multiple processing steps in order. Compatible with any
-object that follows the fit/transform or fit/predict interface.
+Provides lightweight Transformer and Estimator base classes plus a Pipeline
+class for chaining preprocessing steps with a final model.
 
-Notes
------
-Time complexity depends on the steps used. Pipeline itself adds O(s)
-overhead for s steps, excluding the cost of each step.
-Space complexity depends on intermediate transformed arrays.
+The Pipeline supports both:
+- fit()/predict() for batch workflows
+- partial_fit()/predict() for streaming chunk-wise workflows
+
+Each intermediate step receives data, updates its state, then transforms the
+chunk before passing it to the next step. The final step is usually a model such
+as DecisionTreeClassifier or RandomForestClassifier.
+
+Complexity
+----------
+Pipeline overhead is O(s), where s is the number of steps. The total runtime
+and memory cost are dominated by the individual transformers and estimator.
 """
 from __future__ import annotations
 import numpy as np
@@ -182,10 +188,15 @@ class Pipeline:
         classes=None,
     ) -> "Pipeline":
         """
-        Incrementally fit all pipeline steps on a streaming chunk.
+        Incrementally fit all pipeline steps on one streaming chunk.
 
-        Intermediate transformers use partial_fit() if available, then transform().
-        Final estimator uses partial_fit() if available, otherwise fit().
+        Intermediate transformers call partial_fit() when available, otherwise
+        fit() is used as a fallback. After updating each transformer, the
+        current chunk is transformed and passed to the next step.
+
+        The final estimator receives the transformed chunk and optional
+        classes argument. This matches sklearn-style streaming estimators while
+        remaining simple and NumPy-only.
         """
         Xt = np.asarray(X)
 
@@ -311,7 +322,12 @@ class Pipeline:
         return final.predict_proba(Xt)
 
     def score(self, X: NDArray, y: NDArray) -> float:
-        """Return accuracy score for classification."""
+        """
+        Return classification accuracy of the final estimator.
+
+        This helper is intentionally simple because the full streaming metric
+        suite is implemented in metrics.py and StreamTrainer.
+        """
         y = np.asarray(y)
 
         if y.ndim != 1:
@@ -331,6 +347,7 @@ class Pipeline:
         return self.named_steps[name]
 
     def __getitem__(self, name: str):
+        """Allow dictionary-style access, e.g. pipe["model"]."""
         return self.get_step(name)
     
     def __repr__(self) -> str:

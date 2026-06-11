@@ -1,5 +1,3 @@
- 
-import math
 import numpy as np
 from typing import Iterator, List, Optional, Union, Callable
 import csv as _csv
@@ -65,6 +63,11 @@ class CSVReader:
     """
     High-performance CSV reader with streaming + dtype handling.
 
+    Attributes
+    ----------
+    header : list[str] or None
+        Header row read from the CSV file when has_header=True.
+        
     Parameters
     ----------
     filepath : str
@@ -117,6 +120,8 @@ class CSVReader:
         -------
         np.ndarray of shape (n_rows, n_cols)
         """
+        # CSV parsing itself is line-based, so a small Python loop is acceptable here.
+        # Numeric conversion and cleaning are handled by NumPy after parsing.
         split = [line.rstrip("\n").split(self.delimiter) for line in lines]
         arr = np.array(split, dtype=str)
         return _clean_str_array(arr)
@@ -151,6 +156,10 @@ class CSVReader:
                 )
 
             cols = []
+            
+            # Per-column dtype conversion requires iterating over columns because each
+            # column may have a different target dtype. The conversion within each column
+            # is still handled by NumPy's vectorised astype().
             for i, dt in enumerate(self.dtype):
                 col = arr[:, i]
                 cols.append(col.astype(dt))
@@ -208,7 +217,9 @@ class CSVReader:
 
         Notes
         -----
-        Useful for large datasets.
+        This method is intended for streaming workflows. Each yielded chunk can be
+        passed directly into preprocessing.partial_fit(), Pipeline.partial_fit(),
+        or StreamTrainer.fit_chunk().
 
         Raises
         ------

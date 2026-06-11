@@ -437,6 +437,9 @@ class DecisionTreeClassifier:
         return node
 
     def predict(self, X: np.ndarray) -> np.ndarray:
+        # Tree traversal is inherently sample-wise because each row may follow
+        # a different path through the learned tree.
+        
         X = self._validate_predict_input(X)
 
         predictions = np.zeros(X.shape[0], dtype=int)
@@ -448,6 +451,9 @@ class DecisionTreeClassifier:
         return predictions
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        # Probability lookup follows the leaf reached by each sample. The class
+        # probability vector is then filled from the leaf's stored class counts.
+        
         X = self._validate_predict_input(X)
 
         n_samples = X.shape[0]

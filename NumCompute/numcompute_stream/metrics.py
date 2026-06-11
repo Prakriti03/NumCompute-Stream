@@ -1,19 +1,39 @@
+"""
+metrics.py — batch and streaming evaluation metrics.
+
+Provides standard classification and regression metrics together with
+streaming metric classes that support:
+
+- update(y_true_chunk, y_pred_chunk)
+- result()
+- reset()
+
+Streaming metrics are designed for use with StreamTrainer, where predictions
+arrive chunk by chunk. Confusion matrix and AUC accumulate information over
+time, while RollingAccuracy keeps only a fixed recent window.
+"""
 
 import numpy as np
 
 def _as_1d(arr, name='array'):
+    """Convert input to a NumPy array and require one-dimensional shape."""
     arr = np.asarray(arr)
     if arr.ndim != 1:
         raise ValueError(f"{name} must be 1-D, got shape {arr.shape}.")
     return arr
 
 def _check_len(*arrays):
+    """Raise ValueError if input arrays do not share the same first dimension."""
     lengths = {a.shape[0] for a in arrays}
     if len(lengths) > 1:
         raise ValueError(f"Arrays have inconsistent lengths: {sorted(lengths)}")
 
 def _per_class_counts(y_true, y_pred, labels):
-    """Return (TP, FP, FN) arrays — one entry per class — fully vectorised."""
+    """Return (TP, FP, FN) arrays — one entry per class — fully vectorised.
+    Notes
+    -----
+    The small label-mapping loop iterates over classes, not samples.
+    Counting is vectorised through np.bincount."""
     k = labels.size
     label_to_idx = {lbl: i for i, lbl in enumerate(labels)}
 
@@ -276,10 +296,17 @@ def auc(fpr, tpr):
     if fpr.size < 2:
         raise ValueError("Need at least 2 points to compute AUC.")
     order = np.argsort(fpr, kind='stable')
-    return float(np.trapezoid(tpr[order], fpr[order]))
+    trapezoid = getattr(np, "trapezoid", np.trapz)
+    return float(trapezoid(tpr[order], fpr[order]))
 
 # Streaming Classification Metrics
 class StreamingConfusionMatrix:
+    """
+    Accumulating confusion matrix for streaming classification.
+
+    If labels=None, the label set expands automatically when new classes appear
+    in later chunks. Existing counts are reindexed into the expanded matrix.
+    """
     def __init__(self, labels=None):
         self._auto = labels is None
         self.labels = None if labels is None else np.asarray(labels)
@@ -323,6 +350,7 @@ class StreamingConfusionMatrix:
 
 
 class StreamingAccuracy:
+    """Streaming accuracy using cumulative correct and total counts."""
     def __init__(self):
         self.correct = 0
         self.total = 0
@@ -350,6 +378,7 @@ class StreamingAccuracy:
 
 
 class StreamingPrecision:
+    """Streaming precision computed from an accumulated confusion matrix."""
     def __init__(self, average="binary", pos_label=1, zero_division=0.0, labels=None):
         self.average = average
         self.pos_label = pos_label
@@ -397,7 +426,7 @@ class StreamingPrecision:
 
 
 class StreamingRecall:
-
+    """Streaming recall computed from an accumulated confusion matrix."""
     def __init__(self, average="binary", pos_label=1, zero_division=0.0, labels=None):
         self.average = average
         self.pos_label = pos_label
@@ -445,7 +474,7 @@ class StreamingRecall:
 
 
 class StreamingF1:
-
+    """Streaming F1 score computed from an accumulated confusion matrix."""
     def __init__(self, average="binary", pos_label=1, zero_division=0.0, labels=None):
         self.average = average
         self.pos_label = pos_label
@@ -495,7 +524,12 @@ class StreamingF1:
 
 
 class RollingAccuracy:
+    """
+    Rolling-window accuracy over the most recent predictions.
 
+    Unlike StreamingAccuracy, this metric only keeps the last window_size
+    correctness flags, making it useful for recent performance monitoring.
+    """
     def __init__(self, window_size=100):
         if window_size < 1:
             raise ValueError("window_size must be >= 1")
@@ -530,8 +564,14 @@ class RollingAccuracy:
         return self
     
 class StreamingAUC:
-    """Accumulating ROC-AUC over streaming chunks (binary classification).
-    Buffers all (score, label) pairs and recomputes on result()."""
+    """
+    Accumulating ROC-AUC for binary streaming classification.
+
+    AUC is not decomposable by simply averaging chunk-level AUC values, so this
+    class buffers all labels and scores seen so far and recomputes ROC-AUC in
+    result(). Until both positive and negative labels have been observed,
+    result() returns 0.0.
+    """
 
     def __init__(self, pos_label=1):
         self.pos_label = pos_label
