@@ -1,0 +1,5 @@
+benchmark,implementation,result,time_sec
+accuracy,python_loop,0.507,0.0005946739984210581
+accuracy,numpy_vectorized,0.507,2.214599953731522e-05
+column_mean,python_loop,-0.009833528866477084,0.014328327000839636
+column_mean,numpy_vectorized,-0.009833528866477084,0.00017954299983102828
