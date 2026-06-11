@@ -1,7 +1,7 @@
 # tests/test_pipeline.py
 import pytest
 import numpy as np
-from numcompute.pipeline import Transformer, Estimator, Pipeline
+from numcompute_stream.pipeline import Transformer, Estimator, Pipeline
 
 
 def test_transformer_fit_returns_self():

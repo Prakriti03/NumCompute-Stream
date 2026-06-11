@@ -1,5 +1,5 @@
 import numpy as np
-from numcompute.stats import mean, median, std, quantile, percentile, histogram, variance
+from numcompute_stream.stats import mean, median, std, quantile, percentile, histogram, variance
 
 
 # ----------------------------------------------------

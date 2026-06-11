@@ -1,5 +1,5 @@
 import numpy as np
-from numcompute.utils import (
+from numcompute_stream.utils import (
     euclidean_distance,
     manhattan_distance,
     cosine_similarity,

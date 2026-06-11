@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from numcompute.io import CSVReader
+from numcompute_stream.io import CSVReader
 
 
 def write_csv(tmp_path, content):
