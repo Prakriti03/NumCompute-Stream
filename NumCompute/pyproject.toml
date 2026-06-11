@@ -4,17 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "numcompute_stream"
-version = "0.1.0"
-description = "A lightweight numerical computing library built from scratch"
+version = "0.2.0"
+description = "A tree-based streaming machine learning framework built on NumPy"
 authors = [
   { name = "Prakriti Timalsena", email = "a1989163@adelaide.edu.au" }
 ]
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "numpy>=1.21"
+  "numpy>=1.21",
+  "matplotlib>=3.5"
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["numcompute_stream*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "jupyter>=1.0"
+]
